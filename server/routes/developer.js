@@ -15,12 +15,58 @@ router.use(authMiddleware, (req, res, next) => {
 // Create new project
 router.post('/projects', async (req, res) => {
   try {
-    const { name, description, repoName, adminId, startDate, endDate } = req.body;
+    const { 
+      name, 
+      description, 
+      repoName,
+      repoType,
+      adminId, 
+      startDate, 
+      endDate 
+    } = req.body;
 
+    // Validate required fields
+    if (!name || !repoName || !repoType || !adminId || !startDate || !endDate) {
+      return res.status(400).json({ 
+        message: 'Missing required fields' 
+      });
+    }
+
+    // Validate repository type
+    if (!['github', 'gitlab'].includes(repoType)) {
+      return res.status(400).json({ 
+        message: 'Repository type must be either "github" or "gitlab"' 
+      });
+    }
+
+    // Convert dates to Date objects for comparison
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const now = new Date();
+
+    // Set current time to start of day for fair comparison
+    now.setHours(0, 0, 0, 0);
+
+    // Validate dates
+    if (start < now) {
+      return res.status(400).json({
+        message: 'Project start date cannot be in the past'
+      });
+    }
+
+    if (end < start) {
+      return res.status(400).json({
+        message: 'Project end date must be after start date'
+      });
+    }
+
+    // Create project with developer's username for the repo
     const project = new Project({
       name,
       description,
       repoName,
+      repoType,
+      repoUsername: req.user.username,
       adminId,
       startDate,
       endDate,
@@ -31,7 +77,10 @@ router.post('/projects', async (req, res) => {
     res.status(201).json(project);
   } catch (error) {
     console.error('Create project error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ 
+      message: 'Server error',
+      error: error.message
+    });
   }
 });
 
@@ -82,6 +131,7 @@ router.patch('/projects/:projectId/tasks/:taskId/status', async (req, res) => {
     task.status = status;
     if (status === 'completed') {
       task.commitId = commitId;
+      task.commitUrl = project.generateCommitUrl(commitId);
     } else if (status === 'canceled') {
       task.cancelReason = cancelReason;
     }
